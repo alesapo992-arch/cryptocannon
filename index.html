@@ -587,26 +587,24 @@
             CANVAS_WIDTH: 800,
             CANVAS_HEIGHT: 600,
             TEMPO_GIOCO: 180,
-            MAX_PALLONCINI: 12,
-            BASE_SPAWN_RATE: 0.025,
+            MAX_PALLONCINI: 8,
+            BASE_SPAWN_RATE: 0.02,
             DOUBLE_FIRE_DURATA: 6000,
             FPS: 60,
             LEVEL_THRESHOLD: 25,
             SAFE_ZONE_TIME: 30,
             COMBO_MAX: 20,
-            IMAGE_LOAD_TIMEOUT: 10000 // Increased timeout
         };
 
-        // Firebase Config (updated to match your console config)
+        // Firebase Config
         const firebaseConfig = {
             apiKey: "AIzaSyC59841nbStg3yY9KsCzoj05oIlAOvyv0Y",
             authDomain: "crypto-cannon-leaderboard.firebaseapp.com",
             databaseURL: "https://crypto-cannon-leaderboard-default-rtdb.europe-west1.firebasedatabase.app",
             projectId: "crypto-cannon-leaderboard",
-            storageBucket: "crypto-cannon-leaderboard.firebasestorage.app",
+            storageBucket: "crypto-cannon-leaderboard.appspot.com",
             messagingSenderId: "822110550027",
-            appId: "1:822110550027:web:8cec5abab62290b8cc2f0e",
-            measurementId: "G-WV2KYJBHBK"
+            appId: "1:822110550027:web:8cec5abab62290b8cc2f0e"
         };
 
         firebase.initializeApp(firebaseConfig);
@@ -1015,13 +1013,19 @@
                 setTimeout(() => {
                     console.warn("⚠️ Image loading timeout - starting game anyway");
                     resolve();
-                }, CONFIG.IMAGE_LOAD_TIMEOUT); // Increased to 10s
+                }, 10000); // Increased timeout
             });
         }
 
         // ========================================
         // GAME LOGIC
         // ========================================
+        function aggiornaPlayer(deltaTime) {
+            const speed = 5 + level * 0.5;
+            playerX += (targetPlayerX - playerX) * speed * deltaTime;
+            playerX = Math.max(40, Math.min(CONFIG.CANVAS_WIDTH - 40, playerX));
+        }
+
         function aggiorna() {
             const now = Date.now();
 
@@ -1108,7 +1112,7 @@
             if (moneteneg.includes(palloncino.moneta)) {
                 oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y, 
                     "#8B4513", -30000, "💩", perditeSound));
-                testiFluttuanti.push(new TestoFluttuanti("-30000$", palloncino.x, palloncino.y, "#8B4513"));
+                testiFluttuanti.push(new TestoFluttuante("-30000$", palloncino.x, palloncino.y, "#8B4513"));
                 comboCount = 0;
             }
             else if (moneteNegMedie.includes(palloncino.moneta)) {

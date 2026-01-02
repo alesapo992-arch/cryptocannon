@@ -573,10 +573,10 @@
         <ol id="leaderboardList"></ol>
     </div>
 
-    <!-- Updated Firebase SDK Scripts (latest v12.7.0) -->
-    <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js"></script>
+    <!-- Updated Firebase Compat SDK Scripts (latest v12.7.0) -->
+    <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-auth-compat.js"></script>
 
     <!-- MAIN GAME SCRIPT -->
     <script>
@@ -596,7 +596,7 @@
             COMBO_MAX: 20,
         };
 
-        // Firebase Config (unchanged)
+        // Firebase Config (unchanged - works with compat)
         const firebaseConfig = {
             apiKey: "AIzaSyC59841nbStg3yY9KsCzoj05oIlAOvyv0Y",
             authDomain: "crypto-cannon-leaderboard.firebaseapp.com",
@@ -640,17 +640,90 @@
 
         let lastFrameTime = 0;
 
+        // IMAGE HANDLING
+        const backgroundImg = new Image();
+        backgroundImg.src = "images/backgroundcanvas.png";
+
+        const cannonImg = new Image();
+        cannonImg.src = "images/cannonebitcoin1.png";
+
+        const coinImages = {};
+        let immaginiCaricate = 0;
+        let immaginiTotali = 0;
+
+        // AUDIO SYSTEM - WITH FALLBACK
+        const audioMap = {};
+
+        function createAudio(key, src) {
+            try {
+                const audio = new Audio();
+                audio.src = src;
+                audio.preload = "auto";
+                audio.onerror = () => {
+                    console.warn(`⚠️ Audio file not found: ${src}`);
+                };
+                audioMap[key] = audio;
+                return audio;
+            } catch (e) {
+                console.warn(`❌ Audio error (${key}):`, e.message);
+                return null;
+            }
+        }
+
+        // Initialize audio
+        const bgMusic = createAudio('bgMusic', 'audio/music.mp3');
+        const shootSound = createAudio('shootSound', 'audio/shoot.wav');
+        const explosionSound = createAudio('explosionSound', 'audio/explosion.wav');
+        const winSound = createAudio('winSound', 'audio/win.wav');
+        const bonusSound = createAudio('bonusSound', 'audio/bonus.wav');
+        const perditeSound = createAudio('perditeSound', 'audio/lose.wav');
+
+        // Configure audio
+        if (bgMusic) {
+            bgMusic.loop = true;
+            bgMusic.volume = 0.15;
+        }
+        if (shootSound) shootSound.volume = 0.5;
+        if (explosionSound) explosionSound.volume = 0.6;
+        if (winSound) winSound.volume = 1.0;
+        if (bonusSound) bonusSound.volume = 1.0;
+        if (perditeSound) perditeSound.volume = 1.0;
+
+        console.log("✅ Audio system initialized (with fallback)");
+
         // ========================================
-        // IMAGE HANDLING, AUDIO SYSTEM, UTILITY FUNCTIONS, ENTITY CLASSES, VISUAL EFFECTS (unchanged from previous version for brevity)
-        // Assume all previous implementations are copied here...
-        // For example:
+        // UTILITY FUNCTIONS
+        // ========================================
+        function riproduciSuono(audio) {
+            if (!audio) return;
+            try {
+                audio.currentTime = 0;
+                audio.play().catch(() => {
+                    console.warn("Audio playback prevented");
+                });
+            } catch (e) {
+                console.warn("Audio error:", e.message);
+            }
+        }
+
         function aggiornaStat() {
-            document.getElementById('btcPrice').textContent = `💰 BTC: $${btcPrice.toLocaleString()}`;
-            document.getElementById('levelText').textContent = `Level: ${level}`;
-            document.getElementById('comboText').textContent = `Combo: ${comboCount}x`;
+            const priceEl = document.getElementById('btcPrice');
+            if (priceEl) {
+                priceEl.textContent = `💰 BTC: $${btcPrice.toLocaleString()}`;
+            }
+            const levelEl = document.getElementById('levelText');
+            if (levelEl) {
+                levelEl.textContent = `Level: ${level}`;
+            }
+            const comboEl = document.getElementById('comboText');
+            if (comboEl) {
+                comboEl.textContent = `Combo: ${comboCount}x`;
+            }
             const comboFill = document.getElementById('comboFill');
-            const percent = Math.min(100, (comboCount / CONFIG.COMBO_MAX) * 100);
-            comboFill.style.width = `${percent}%`;
+            if (comboFill) {
+                const percent = Math.min(100, (comboCount / CONFIG.COMBO_MAX) * 100);
+                comboFill.style.width = `${percent}%`;
+            }
             if (comboCount > 0) {
                 document.getElementById('comboBar').style.display = 'block';
             } else {
@@ -658,10 +731,752 @@
             }
         }
 
-        // Updated generaPalloncino, aggiorna, gestisciColpimentoMoneta, etc., as in previous response...
-        // (Copy the full script logic from the previous improved version here)
+        function mostricaCaricamento(visibile) {
+            const loader = document.getElementById('loadingIndicator');
+            if (loader) {
+                loader.style.display = visibile ? 'flex' : 'none';
+            }
+        }
 
-        // EVENT LISTENERS (unchanged)
+        function sanitizeInput(input) {
+            return input.replace(/[<>&'"]/g, '');
+        }
+
+        async function getRealBtcPrice() {
+            try {
+                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+                const data = await response.json();
+                return data.bitcoin.usd;
+            } catch (e) {
+                console.warn("Failed to fetch real BTC price:", e);
+                return 100000; // Fallback
+            }
+        }
+
+        function simulateVolatility() {
+            const change = (Math.random() - 0.5) * 0.02; // +/- 1%
+            btcPrice = Math.max(0, btcPrice * (1 + change));
+            aggiornaStat();
+        }
+
+        // ========================================
+        // ENTITY CLASSES
+        // ========================================
+        class Palloncino {
+            constructor(moneta, velocita) {
+                this.moneta = moneta || MONETE[Math.floor(Math.random() * MONETE.length)];
+                this.velocita = velocita || (0.8 + Math.random() * 1.2);
+                this.immagine = coinImages[this.moneta];
+                this.x = Math.random() * (canvas.width - 40) + 20;
+                this.y = 0;
+                this.dimensione = 30 + Math.random() * 25;
+                this.rimuovi = false;
+            }
+
+            aggiorna() {
+                this.y += this.velocita;
+            }
+
+            disegna() {
+                if (this.immagine && this.immagine.complete && this.immagine.naturalHeight !== 0) {
+                    try {
+                        ctx.drawImage(this.immagine, 
+                            this.x - this.dimensione / 2, 
+                            this.y - this.dimensione / 2, 
+                            this.dimensione, 
+                            this.dimensione);
+                    } catch (e) {
+                        console.warn("Draw image error:", e.message);
+                    }
+                } else {
+                    // Fallback: cerchio
+                    ctx.fillStyle = "#FFD700";
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.dimensione / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        class Proiettile {
+            constructor(x) {
+                this.x = x;
+                this.y = canvas.height - 50;
+                this.velocita = 6;
+                this.raggio = 5;
+                this.rimuovi = false;
+            }
+
+            aggiorna() {
+                this.y -= this.velocita;
+                if (this.y < 0) this.rimuovi = true;
+            }
+
+            disegna() {
+                ctx.fillStyle = "#FFA500";
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.raggio, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class OggettoCadente {
+            constructor(x, y, colore, valore, carattere, suono) {
+                this.x = x;
+                this.y = y;
+                this.colore = colore;
+                this.valore = valore;
+                this.carattere = carattere;
+                this.suono = suono;
+                this.dimensione = 20;
+                this.velocita = 2;
+                this.rimuovi = false;
+            }
+
+            aggiorna() {
+                this.y += this.velocita;
+
+                if (this.y + this.dimensione / 2 >= canvas.height - 40 && 
+                    this.x > playerX - 30 && this.x < playerX + 30) {
+                    this.rimuovi = true;
+
+                    if (this.carattere === "🚀") {
+                        attivaDoubleFire();
+                    } else if (this.valore !== 0) {
+                        btcPrice = Math.max(0, btcPrice + this.valore);
+                        aggiornaStat();
+
+                        if (this.valore < 0) {
+                            cannonFlash = true;
+                            setTimeout(() => { cannonFlash = false; }, 200);
+                        }
+                    }
+
+                    if (this.suono) riproduciSuono(this.suono);
+                    if ('vibrate' in navigator) navigator.vibrate(200);
+                }
+
+                if (this.y > canvas.height) this.rimuovi = true;
+            }
+
+            disegna() {
+                ctx.fillStyle = this.colore;
+                ctx.font = "bold 20px 'Courier New'";
+                ctx.fillText(this.carattere, this.x - 5, this.y);
+            }
+        }
+
+        class TestoFluttuante {
+            constructor(testo, x, y, colore = "#00FFFF") {
+                this.testo = testo;
+                this.x = x;
+                this.y = y;
+                this.colore = colore;
+                this.alfa = 1;
+                this.vita = 60;
+            }
+
+            aggiorna() {
+                this.y -= 0.5;
+                this.alfa -= 0.02;
+                this.vita--;
+            }
+
+            disegna() {
+                ctx.globalAlpha = this.alfa;
+                ctx.fillStyle = this.colore;
+                ctx.font = "bold 20px 'Courier New'";
+                ctx.fillText(this.testo, this.x, this.y);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // ========================================
+        // VISUAL EFFECTS
+        // ========================================
+        function generaParticelleEsplosione(x, y, colore) {
+            for (let i = 0; i < 10; i++) {
+                particelle.push({
+                    x, y, colore,
+                    dimensione: 3,
+                    vita: 15,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: (Math.random() - 0.5) * 5,
+                    aggiorna() {
+                        this.x += this.vx;
+                        this.y += this.vy;
+                        this.vita--;
+                    },
+                    disegna() {
+                        ctx.fillStyle = this.colore;
+                        ctx.fillRect(this.x, this.y, this.dimensione, this.dimensione);
+                    }
+                });
+            }
+        }
+
+        // ========================================
+        // ENTITY SPAWN
+        // ========================================
+        const MONETE = [
+            "bitcoincash.png", "bonk.png", "cardano.png", "dogecoin.png", "dogwif.png",
+            "floki.png", "pengu.png", "pepe.png", "shiba.png", "stellar.png", "Tether.png",
+            "tron.png", "usdc.png", "xrp.png", "eth.png", "jolly.png", "terra.png",
+            "bitconnect.png", "paxgold.png", "pancake.png"
+        ];
+
+        function generaPalloncino() {
+            if (palloncini.length < CONFIG.MAX_PALLONCINI && Math.random() < spawnRate) {
+                let moneta;
+                const rand = Math.random();
+
+                if (safeZoneActive) {
+                    // Safe zone: only good coins
+                    const good = ['Tether.png', 'usdc.png', 'paxgold.png'];
+                    moneta = good[Math.floor(Math.random() * good.length)];
+                } else {
+                    if (rand < 0.70) { // 70% good
+                        const good = ['Tether.png', 'usdc.png', 'paxgold.png', 'bitcoincash.png', 'stellar.png', 'tron.png'];
+                        moneta = good[Math.floor(Math.random() * good.length)];
+                    } else if (rand < 0.90) { // 20% medium neg
+                        const medium = ['dogecoin.png', 'xrp.png', 'cardano.png'];
+                        moneta = medium[Math.floor(Math.random() * medium.length)];
+                    } else if (rand < 0.95) { // 5% bad
+                        const bad = ['shiba.png', 'pepe.png', 'pengu.png', 'floki.png', 'dogwif.png', 'bonk.png', 'pancake.png'];
+                        moneta = bad[Math.floor(Math.random() * bad.length)];
+                    } else { // 5% special
+                        const specials = ['eth.png', 'jolly.png', 'terra.png', 'bitconnect.png'];
+                        moneta = specials[Math.floor(Math.random() * specials.length)];
+                    }
+                }
+
+                palloncini.push(new Palloncino(moneta, 0.8 + Math.random() * 0.8 + level * 0.1));
+            }
+        }
+
+        // ========================================
+        // POWER-UPS
+        // ========================================
+        function attivaDoubleFire() {
+            doubleFire = true;
+            doubleFireEndTime = Date.now() + CONFIG.DOUBLE_FIRE_DURATA;
+        }
+
+        function isDoubleFireAttivo() {
+            if (Date.now() > doubleFireEndTime) {
+                doubleFire = false;
+            }
+            return doubleFire;
+        }
+
+        // ========================================
+        // RESOURCE LOADING
+        // ========================================
+        async function caricaImmagini() {
+            return new Promise((resolve) => {
+                immaginiTotali = MONETE.length + 2;
+                immaginiCaricate = 0;
+
+                function onImageLoad() {
+                    immaginiCaricate++;
+                    mostricaCaricamento(immaginiCaricate < immaginiTotali);
+                    if (immaginiCaricate >= immaginiTotali) {
+                        console.log("✅ All images loaded");
+                        resolve();
+                    }
+                }
+
+                backgroundImg.onload = onImageLoad;
+                backgroundImg.onerror = () => {
+                    console.warn("⚠️ Background image not loaded");
+                    onImageLoad();
+                };
+
+                cannonImg.onload = onImageLoad;
+                cannonImg.onerror = () => {
+                    console.warn("⚠️ Cannon image not loaded");
+                    onImageLoad();
+                };
+
+                MONETE.forEach(nomeMoneta => {
+                    const img = new Image();
+                    img.src = `coin/${nomeMoneta}`;
+                    img.loading = 'lazy';
+                    img.onload = onImageLoad;
+                    img.onerror = () => {
+                        console.warn(`⚠️ Coin image not loaded: ${nomeMoneta}`);
+                        onImageLoad();
+                    };
+                    coinImages[nomeMoneta] = img;
+                });
+
+                setTimeout(() => {
+                    console.warn("⚠️ Image loading timeout - starting game anyway");
+                    resolve();
+                }, 3000);
+            });
+        }
+
+        // ========================================
+        // GAME LOGIC
+        // ========================================
+        function aggiorna() {
+            const now = Date.now();
+
+            if (now - lastTimeUpdate >= 1000) {
+                timeLeft--;
+                lastTimeUpdate = now;
+                const timeEl = document.getElementById('timeText');
+                if (timeEl) {
+                    timeEl.textContent = `⏱️ Time: ${timeLeft}s`;
+                }
+
+                simulateVolatility();
+
+                if (CONFIG.TEMPO_GIOCO - timeLeft >= CONFIG.SAFE_ZONE_TIME) {
+                    safeZoneActive = false;
+                }
+
+                if ((CONFIG.TEMPO_GIOCO - timeLeft) / CONFIG.LEVEL_THRESHOLD >= level) {
+                    level++;
+                    spawnRate = Math.min(0.08, CONFIG.BASE_SPAWN_RATE * Math.pow(1.15, level - 1));
+                    aggiornaStat();
+                }
+
+                if ((timeLeft <= 0 || btcPrice <= 0) && !gameOver) {
+                    terminaGioco(btcPrice);
+                }
+            }
+
+            proiettili.forEach(p => p.aggiorna());
+            oggettiCadenti.forEach(oc => oc.aggiorna());
+
+            palloncini.forEach(pal => {
+                pal.aggiorna();
+
+                if (pal.y - pal.dimensione > canvas.height) {
+                    pal.rimuovi = true;
+                    comboCount = 0;
+                    btcPrice = Math.max(0, btcPrice - 3000 * (1 + comboCount * 0.05));
+                    aggiornaStat();
+                }
+
+                proiettili.forEach(p => {
+                    if (Math.abs(p.x - pal.x) < pal.dimensione / 2 + p.raggio && 
+                        Math.abs(p.y - pal.y) < pal.dimensione / 2 + p.raggio) {
+                        riproduciSuono(explosionSound);
+                        generaParticelleEsplosione(pal.x, pal.y, "#FFA500");
+                        gestisciColpimentoMoneta(pal);
+                        pal.rimuovi = true;
+                        p.rimuovi = true;
+                    }
+                });
+            });
+
+            palloncini = palloncini.filter(p => !p.rimuovi);
+            proiettili = proiettili.filter(p => !p.rimuovi);
+            oggettiCadenti = oggettiCadenti.filter(oc => !oc.rimuovi);
+
+            testiFluttuanti.forEach(tf => tf.aggiorna());
+            testiFluttuanti = testiFluttuanti.filter(tf => tf.vita > 0);
+
+            particelle.forEach(p => p.aggiorna());
+            particelle = particelle.filter(p => p.vita > 0);
+        }
+
+        function gestisciColpimentoMoneta(palloncino) {
+            const multiplier = 1 + (comboCount * 0.1);
+            const baseValue = 5000;
+
+            const config = {
+                "Tether.png": { valore: 10000, colore: "#00FF00", emoji: "💰", suono: bonusSound, good: true },
+                "usdc.png": { valore: 10000, colore: "#00BFFF", emoji: "💵", suono: bonusSound, good: true },
+                "jolly.png": { valore: 0, colore: "#FFD700", emoji: "🚀", suono: winSound, powerup: true, good: true },
+                "paxgold.png": { valore: 5000, colore: "#FFD700", emoji: "🪙", suono: winSound, good: true },
+                "eth.png": { tempo: 5, colore: "#00FFFF", emoji: "⏱️", suono: bonusSound, good: true },
+                "terra.png": { tempo: -20, colore: "#FF0000", emoji: "💣", suono: perditeSound, good: false },
+                "bitconnect.png": { valore: -30000, colore: "#32cd32", emoji: "🤮", suono: perditeSound, good: false },
+            };
+
+            const goodCoins = ["bitcoincash.png", "stellar.png", "tron.png", "Tether.png", "usdc.png", "paxgold.png"];
+            const mediumNeg = ["dogecoin.png", "xrp.png", "cardano.png"];
+            const badCoins = ["shiba.png", "pepe.png", "pengu.png", "floki.png", "dogwif.png", "bonk.png", "pancake.png"];
+
+            let valore = 0;
+            let colore = "#FFD700";
+            let emoji = "💰";
+            let suono = bonusSound;
+            let isGood = true;
+
+            if (palloncino.moneta in config) {
+                const c = config[palloncino.moneta];
+                valore = c.valore || 0;
+                colore = c.colore;
+                emoji = c.emoji;
+                suono = c.suono;
+                isGood = c.good !== false;
+
+                if (c.tempo !== undefined) {
+                    timeLeft += c.tempo;
+                    testiFluttuanti.push(new TestoFluttuante(
+                        `${c.tempo > 0 ? '+' : ''}${c.tempo}s`,
+                        palloncino.x, palloncino.y, c.colore));
+                    riproduciSuono(c.suono);
+                    return; // No combo for time
+                } else if (c.powerup) {
+                    oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y,
+                        c.colore, 0, c.emoji, c.suono));
+                    testiFluttuanti.push(new TestoFluttuante("🔥 Double Fire!",
+                        palloncino.x, palloncino.y, c.colore));
+                    comboCount++;
+                } else {
+                    oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y,
+                        c.colore, valore * multiplier, c.emoji, c.suono));
+                    testiFluttuanti.push(new TestoFluttuante(
+                        `${valore > 0 ? '+' : ''}${Math.round(valore * multiplier)}$`,
+                        palloncino.x, palloncino.y, c.colore));
+                }
+            } else if (goodCoins.includes(palloncino.moneta)) {
+                valore = baseValue;
+                isGood = true;
+            } else if (mediumNeg.includes(palloncino.moneta)) {
+                valore = -20000;
+                colore = "#32cd32";
+                emoji = "⚠️";
+                suono = perditeSound;
+                isGood = false;
+                oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y, 
+                    colore, valore * multiplier * 0.5, emoji, suono));
+                testiFluttuanti.push(new TestoFluttuante(`${valore * multiplier * 0.5}$`, palloncino.x, palloncino.y, colore));
+            } else if (badCoins.includes(palloncino.moneta)) {
+                valore = -30000;
+                colore = "#8B4513";
+                emoji = "💩";
+                suono = perditeSound;
+                isGood = false;
+                oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y, 
+                    colore, valore, emoji, suono));
+                testiFluttuanti.push(new TestoFluttuante(`${valore}$`, palloncino.x, palloncino.y, colore));
+            } else {
+                valore = baseValue;
+                isGood = true;
+            }
+
+            if (valore !== 0 && !config[palloncino.moneta]) {
+                btcPrice += valore * multiplier;
+                testiFluttuanti.push(new TestoFluttuante(`+${Math.round(valore * multiplier)}$`, palloncino.x, palloncino.y, colore));
+            }
+
+            if (isGood) {
+                comboCount = Math.min(CONFIG.COMBO_MAX, comboCount + 1);
+            } else {
+                comboCount = 0;
+            }
+
+            aggiornaStat();
+        }
+
+        function disegnaGiocatore() {
+            if (cannonImg && cannonImg.complete && cannonImg.naturalHeight !== 0) {
+                ctx.globalAlpha = cannonFlash ? 0.5 : 1.0;
+                try {
+                    ctx.drawImage(cannonImg, playerX - 30, canvas.height - 60, 60, 60);
+                } catch (e) {
+                    console.warn("Cannon draw error:", e.message);
+                }
+                ctx.globalAlpha = 1.0;
+            } else {
+                // Fallback
+                ctx.fillStyle = "#FFD700";
+                ctx.beginPath();
+                ctx.moveTo(playerX, canvas.height - 50);
+                ctx.lineTo(playerX - 20, canvas.height - 20);
+                ctx.lineTo(playerX + 20, canvas.height - 20);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        function disegna() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (backgroundImg && backgroundImg.complete && backgroundImg.naturalHeight !== 0) {
+                try {
+                    ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height);
+                } catch (e) {
+                    console.warn("Background draw error:", e.message);
+                }
+            } else {
+                ctx.fillStyle = "#000";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            palloncini.forEach(p => p.disegna());
+            oggettiCadenti.forEach(oc => oc.disegna());
+            proiettili.forEach(p => p.disegna());
+            particelle.forEach(p => p.disegna());
+            testiFluttuanti.forEach(tf => tf.disegna());
+
+            disegnaGiocatore();
+
+            if (gameOver) {
+                fadeAlpha = Math.min(1, fadeAlpha + 0.01);
+                ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        function aggiornaPlayer(deltaTime) {
+            const speed = 5 + level * 0.5;
+            playerX += (targetPlayerX - playerX) * speed * deltaTime;
+            playerX = Math.max(40, Math.min(CONFIG.CANVAS_WIDTH - 40, playerX));
+        }
+
+        function cicloGioco(timestamp) {
+            const deltaTime = Math.min(1/30, (timestamp - lastFrameTime) / 1000);
+            lastFrameTime = timestamp;
+
+            if (!gameOver) {
+                generaPalloncino();
+                aggiornaPlayer(deltaTime);
+                aggiorna();
+            }
+            disegna();
+            requestAnimationFrame(cicloGioco);
+        }
+
+        // ========================================
+        // INPUT CONTROLS
+        // ========================================
+        function initMobileControls() {
+            const leftBtn = document.getElementById('leftBtn');
+            const rightBtn = document.getElementById('rightBtn');
+            const fireBtn = document.getElementById('fireBtn');
+
+            let autoFireInterval;
+
+            const moveLeft = () => targetPlayerX -= 50;
+            const moveRight = () => targetPlayerX += 50;
+
+            leftBtn.addEventListener('touchstart', (e) => { e.preventDefault(); moveLeft(); });
+            rightBtn.addEventListener('touchstart', (e) => { e.preventDefault(); moveRight(); });
+
+            fireBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                spara();
+                autoFireInterval = setInterval(spara, 200);
+            });
+            fireBtn.addEventListener('touchend', () => clearInterval(autoFireInterval));
+
+            // Desktop
+            leftBtn.addEventListener('mousedown', moveLeft);
+            rightBtn.addEventListener('mousedown', moveRight);
+            fireBtn.addEventListener('mousedown', () => {
+                spara();
+                autoFireInterval = setInterval(spara, 200);
+            });
+            document.addEventListener('mouseup', () => clearInterval(autoFireInterval));
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") targetPlayerX -= 30;
+            if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") targetPlayerX += 30;
+
+            if (e.key === " ") {
+                e.preventDefault();
+                spara();
+            }
+
+            if (e.key === "Escape") esciGioco();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (canvas && document.getElementById('gameArea').style.display !== 'none') {
+                const rect = canvas.getBoundingClientRect();
+                targetPlayerX = Math.max(40, Math.min(canvas.width - 40, e.clientX - rect.left));
+            }
+        });
+
+        document.addEventListener('mousedown', () => {
+            if (canvas && !gameOver) spara();
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            if (canvas) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = canvas.getBoundingClientRect();
+                targetPlayerX = Math.max(40, Math.min(canvas.width - 40, touch.clientX - rect.left));
+            }
+        });
+
+        document.addEventListener('touchstart', () => {
+            if (canvas && !gameOver) spara();
+        });
+
+        function spara() {
+            if (!gameOver) {
+                if (isDoubleFireAttivo()) {
+                    proiettili.push(new Proiettile(playerX - 10));
+                    proiettili.push(new Proiettile(playerX + 10));
+                } else {
+                    proiettili.push(new Proiettile(playerX));
+                }
+                riproduciSuono(shootSound);
+            }
+        }
+
+        // ========================================
+        // GAME MANAGEMENT
+        // ========================================
+        function hideTutorial() {
+            document.getElementById('tutorialOverlay').classList.add('hidden');
+        }
+
+        async function avviaGioco() {
+            if (gameStarted) return;
+            gameStarted = true;
+
+            mostricaCaricamento(true);
+            await caricaImmagini();
+            btcPrice = await getRealBtcPrice();
+            aggiornaStat();
+            mostricaCaricamento(false);
+
+            document.getElementById('quickstart').style.display = 'none';
+            document.getElementById('gameArea').style.display = 'block';
+            document.getElementById('leaderboard').style.display = 'block';
+
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            canvas.width = CONFIG.CANVAS_WIDTH;
+            canvas.height = CONFIG.CANVAS_HEIGHT;
+            resizeCanvas();
+
+            auth.signInAnonymously().catch(console.error);
+
+            riproduciSuono(bgMusic);
+
+            loadLeaderboard();
+            cicloGioco(performance.now());
+
+            setTimeout(hideTutorial, 10000);
+            if (window.innerWidth < 768) initMobileControls();
+        }
+
+        function terminaGioco(punteggio) {
+            gameOver = true;
+            riproduciSuono(perditeSound);
+            sbiadisciMusica();
+
+            setTimeout(() => {
+                document.getElementById('finalScoreText').textContent =
+                    `Final Score: $${punteggio.toLocaleString()}`;
+                document.getElementById('nameOverlay').style.display = 'flex';
+                document.getElementById('nickInput').focus();
+                window.shareScore = () => shareScore(punteggio);
+            }, 1000);
+        }
+
+        function pulisciGioco() {
+            gameOver = false;
+            gameStarted = false;
+            palloncini = [];
+            proiettili = [];
+            particelle = [];
+            oggettiCadenti = [];
+            testiFluttuanti = [];
+            playerX = CONFIG.CANVAS_WIDTH / 2;
+            targetPlayerX = playerX;
+            timeLeft = CONFIG.TEMPO_GIOCO;
+            btcPrice = 100000;
+            fadeAlpha = 0;
+            level = 1;
+            spawnRate = CONFIG.BASE_SPAWN_RATE;
+            comboCount = 0;
+            safeZoneActive = true;
+
+            Object.values(audioMap).forEach(audio => {
+                if (audio) {
+                    audio.pause();
+                    audio.currentTime = 0;
+                }
+            });
+
+            if (bgMusic) {
+                bgMusic.pause();
+                bgMusic.currentTime = 0;
+                bgMusic.volume = 0.15;
+            }
+        }
+
+        function sbiadisciMusica() {
+            if (!bgMusic) return;
+            const interval = setInterval(() => {
+                if (bgMusic.volume > 0.01) {
+                    bgMusic.volume = Math.max(0, bgMusic.volume - 0.02);
+                } else {
+                    clearInterval(interval);
+                    bgMusic.pause();
+                }
+            }, 100);
+        }
+
+        function esciGioco() {
+            pulisciGioco();
+            window.location.href = "index.html";
+        }
+
+        function resizeCanvas() {
+            const scale = Math.min(window.innerWidth / CONFIG.CANVAS_WIDTH, window.innerHeight / CONFIG.CANVAS_HEIGHT * 0.8);
+            canvas.style.width = `${CONFIG.CANVAS_WIDTH * scale}px`;
+            canvas.style.height = `${CONFIG.CANVAS_HEIGHT * scale}px`;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // ========================================
+        // LEADERBOARD FUNCTIONS
+        // ========================================
+        function loadLeaderboard() {
+            db.ref('scores').orderByChild('score').limitToLast(10).on('value', (snapshot) => {
+                const list = document.getElementById('leaderboardList');
+                list.innerHTML = '';
+                const scores = [];
+                snapshot.forEach(child => {
+                    scores.push(child.val());
+                });
+                scores.reverse().forEach((entry, idx) => {
+                    const li = document.createElement('li');
+                    li.textContent = `#${idx + 1} ${entry.nick} - $${entry.score.toLocaleString()}`;
+                    list.appendChild(li);
+                });
+            });
+        }
+
+        function saveScore(nick, score) {
+            nick = sanitizeInput(nick);
+            if (nick && nick.length > 0) {
+                db.ref('scores').push({ nick, score, date: new Date().toISOString() });
+                document.getElementById('nameOverlay').style.display = 'none';
+                setTimeout(() => {
+                    alert(`Score saved: ${nick} - $${score.toLocaleString()}`);
+                    window.location.href = "index.html";
+                }, 500);
+            }
+        }
+
+        // ========================================
+        // SHARE FUNCTION
+        // ========================================
+        function shareScore(score) {
+            const text = encodeURIComponent(`Ho fatto $${score.toLocaleString()} su Crypto Cannon! Gioca anche tu: ${window.location.href}`);
+            window.open(`https://twitter.com/intent/tweet?text=${text}`);
+        }
+
+        // ========================================
+        // EVENT LISTENERS
+        // ========================================
         document.addEventListener('DOMContentLoaded', () => {
             const playBtn = document.getElementById('playBtn');
             const exitBtn = document.getElementById('exitBtn');
@@ -678,9 +1493,11 @@
                     }
                 });
             }
+
+            document.getElementById('tutorialOverlay').addEventListener('click', hideTutorial);
         });
 
-        console.log("✅ Game script loaded with Firebase SDK update");
+        console.log("✅ Game script loaded with Firebase compat SDK");
     </script>
 
 </body>

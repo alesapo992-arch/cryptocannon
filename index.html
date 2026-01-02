@@ -573,10 +573,10 @@
         <ol id="leaderboardList"></ol>
     </div>
 
-    <!-- Updated Firebase Compat SDK Scripts (latest v12.7.0) -->
-    <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-auth-compat.js"></script>
+    <!-- Firebase Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 
     <!-- MAIN GAME SCRIPT -->
     <script>
@@ -585,7 +585,7 @@
         // ========================================
         const CONFIG = {
             CANVAS_WIDTH: 800,
-            CANVAS_HEIGHT: 600,
+            CANVAS_HEIGHT: 600;
             TEMPO_GIOCO: 180,
             MAX_PALLONCINI: 12,
             BASE_SPAWN_RATE: 0.025,
@@ -594,17 +594,19 @@
             LEVEL_THRESHOLD: 25,
             SAFE_ZONE_TIME: 30,
             COMBO_MAX: 20,
+            IMAGE_LOAD_TIMEOUT: 10000 // Increased timeout
         };
 
-        // Firebase Config (unchanged - works with compat)
+        // Firebase Config (updated to match your console config)
         const firebaseConfig = {
             apiKey: "AIzaSyC59841nbStg3yY9KsCzoj05oIlAOvyv0Y",
             authDomain: "crypto-cannon-leaderboard.firebaseapp.com",
             databaseURL: "https://crypto-cannon-leaderboard-default-rtdb.europe-west1.firebasedatabase.app",
             projectId: "crypto-cannon-leaderboard",
-            storageBucket: "crypto-cannon-leaderboard.appspot.com",
+            storageBucket: "crypto-cannon-leaderboard.firebasestorage.app",
             messagingSenderId: "822110550027",
-            appId: "1:822110550027:web:8cec5abab62290b8cc2f0e"
+            appId: "1:822110550027:web:8cec5abab62290b8cc2f0e",
+            measurementId: "G-WV2KYJBHBK"
         };
 
         firebase.initializeApp(firebaseConfig);
@@ -936,7 +938,7 @@
                     moneta = good[Math.floor(Math.random() * good.length)];
                 } else {
                     if (rand < 0.70) { // 70% good
-                        const good = ['Tether.png', 'usdc.png', 'paxgold.png', 'bitcoincash.png', 'stellar.png', 'tron.png'];
+                        const good = ['Tether.png', 'usdc.png', 'paxgold.png', 'bitcoincash.png', 'stellar.png', "tron.png"];
                         moneta = good[Math.floor(Math.random() * good.length)];
                     } else if (rand < 0.90) { // 20% medium neg
                         const medium = ['dogecoin.png', 'xrp.png', 'cardano.png'];
@@ -988,13 +990,13 @@
 
                 backgroundImg.onload = onImageLoad;
                 backgroundImg.onerror = () => {
-                    console.warn("⚠️ Background image not loaded");
+                    console.warn("⚠️ Background image not loaded: " + backgroundImg.src);
                     onImageLoad();
                 };
 
                 cannonImg.onload = onImageLoad;
                 cannonImg.onerror = () => {
-                    console.warn("⚠️ Cannon image not loaded");
+                    console.warn("⚠️ Cannon image not loaded: " + cannonImg.src);
                     onImageLoad();
                 };
 
@@ -1004,7 +1006,7 @@
                     img.loading = 'lazy';
                     img.onload = onImageLoad;
                     img.onerror = () => {
-                        console.warn(`⚠️ Coin image not loaded: ${nomeMoneta}`);
+                        console.warn(`⚠️ Coin image not loaded: coin/${nomeMoneta}`);
                         onImageLoad();
                     };
                     coinImages[nomeMoneta] = img;
@@ -1013,7 +1015,7 @@
                 setTimeout(() => {
                     console.warn("⚠️ Image loading timeout - starting game anyway");
                     resolve();
-                }, 3000);
+                }, CONFIG.IMAGE_LOAD_TIMEOUT); // Increased to 10s
             });
         }
 
@@ -1062,13 +1064,15 @@
                 }
 
                 proiettili.forEach(p => {
-                    if (Math.abs(p.x - pal.x) < pal.dimensione / 2 + p.raggio && 
-                        Math.abs(p.y - pal.y) < pal.dimensione / 2 + p.raggio) {
+                    if (Math.abs(p.x - pal.x) < pal.dimensione && 
+                        Math.abs(p.y - pal.y) < pal.dimensione) {
                         riproduciSuono(explosionSound);
                         generaParticelleEsplosione(pal.x, pal.y, "#FFA500");
                         gestisciColpimentoMoneta(pal);
                         pal.rimuovi = true;
                         p.rimuovi = true;
+                        btcPrice += 5000;
+                        aggiornaStat();
                     }
                 });
             });
@@ -1085,36 +1089,36 @@
         }
 
         function gestisciColpimentoMoneta(palloncino) {
-            const multiplier = 1 + (comboCount * 0.1);
-            const baseValue = 5000;
+            let multiplier = 1 + (comboCount * 0.1);
+            let baseValue = 5000;
 
             const config = {
-                "Tether.png": { valore: 10000, colore: "#00FF00", emoji: "💰", suono: bonusSound, good: true },
-                "usdc.png": { valore: 10000, colore: "#00BFFF", emoji: "💵", suono: bonusSound, good: true },
-                "jolly.png": { valore: 0, colore: "#FFD700", emoji: "🚀", suono: winSound, powerup: true, good: true },
-                "paxgold.png": { valore: 5000, colore: "#FFD700", emoji: "🪙", suono: winSound, good: true },
-                "eth.png": { tempo: 5, colore: "#00FFFF", emoji: "⏱️", suono: bonusSound, good: true },
-                "terra.png": { tempo: -20, colore: "#FF0000", emoji: "💣", suono: perditeSound, good: false },
-                "bitconnect.png": { valore: -30000, colore: "#32cd32", emoji: "🤮", suono: perditeSound, good: false },
+                "Tether.png": { valore: 10000, colore: "#00FF00", emoji: "💰", suono: bonusSound },
+                "usdc.png": { valore: 10000, colore: "#00BFFF", emoji: "💵", suono: bonusSound },
+                "jolly.png": { valore: 0, colore: "#FFD700", emoji: "🚀", suono: winSound, powerup: true },
+                "paxgold.png": { valore: 5000, colore: "#FFD700", emoji: "🪙", suono: winSound },
+                "eth.png": { tempo: 5, colore: "#00FFFF", emoji: "⏱️", suono: bonusSound },
+                "terra.png": { tempo: -20, colore: "#FF0000", emoji: "💣", suono: perditeSound },
+                "bitconnect.png": { valore: -30000, colore: "#32cd32", emoji: "🤮", suono: perditeSound },
             };
 
-            const goodCoins = ["bitcoincash.png", "stellar.png", "tron.png", "Tether.png", "usdc.png", "paxgold.png"];
-            const mediumNeg = ["dogecoin.png", "xrp.png", "cardano.png"];
-            const badCoins = ["shiba.png", "pepe.png", "pengu.png", "floki.png", "dogwif.png", "bonk.png", "pancake.png"];
+            const moneteneg = ["shiba.png", "pepe.png", "pengu.png", "floki.png", "dogwif.png", "bonk.png", "pancake.png"];
+            const moneteNegMedie = ["dogecoin.png", "xrp.png", "stellar.png", "tron.png", "cardano.png"];
 
-            let valore = 0;
-            let colore = "#FFD700";
-            let emoji = "💰";
-            let suono = bonusSound;
-            let isGood = true;
-
-            if (palloncino.moneta in config) {
+            if (moneteneg.includes(palloncino.moneta)) {
+                oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y, 
+                    "#8B4513", -30000, "💩", perditeSound));
+                testiFluttuanti.push(new TestoFluttuanti("-30000$", palloncino.x, palloncino.y, "#8B4513"));
+                comboCount = 0;
+            }
+            else if (moneteNegMedie.includes(palloncino.moneta)) {
+                oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y, 
+                    "#32cd32", -20000, "⚠️", perditeSound));
+                testiFluttuanti.push(new TestoFluttuante("-20000$", palloncino.x, palloncino.y, "#32cd32"));
+                comboCount = 0;
+            }
+            else if (config[palloncino.moneta]) {
                 const c = config[palloncino.moneta];
-                valore = c.valore || 0;
-                colore = c.colore;
-                emoji = c.emoji;
-                suono = c.suono;
-                isGood = c.good !== false;
 
                 if (c.tempo !== undefined) {
                     timeLeft += c.tempo;
@@ -1122,57 +1126,29 @@
                         `${c.tempo > 0 ? '+' : ''}${c.tempo}s`,
                         palloncino.x, palloncino.y, c.colore));
                     riproduciSuono(c.suono);
-                    return; // No combo for time
-                } else if (c.powerup) {
+                    comboCount = c.tempo > 0 ? comboCount + 1 : 0;
+                }
+                else if (c.powerup) {
                     oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y,
                         c.colore, 0, c.emoji, c.suono));
                     testiFluttuanti.push(new TestoFluttuante("🔥 Double Fire!",
                         palloncino.x, palloncino.y, c.colore));
                     comboCount++;
-                } else {
-                    oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y,
-                        c.colore, valore * multiplier, c.emoji, c.suono));
-                    testiFluttuanti.push(new TestoFluttuante(
-                        `${valore > 0 ? '+' : ''}${Math.round(valore * multiplier)}$`,
-                        palloncino.x, palloncino.y, c.colore));
                 }
-            } else if (goodCoins.includes(palloncino.moneta)) {
-                valore = baseValue;
-                isGood = true;
-            } else if (mediumNeg.includes(palloncino.moneta)) {
-                valore = -20000;
-                colore = "#32cd32";
-                emoji = "⚠️";
-                suono = perditeSound;
-                isGood = false;
-                oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y, 
-                    colore, valore * multiplier * 0.5, emoji, suono));
-                testiFluttuanti.push(new TestoFluttuante(`${valore * multiplier * 0.5}$`, palloncino.x, palloncino.y, colore));
-            } else if (badCoins.includes(palloncino.moneta)) {
-                valore = -30000;
-                colore = "#8B4513";
-                emoji = "💩";
-                suono = perditeSound;
-                isGood = false;
-                oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y, 
-                    colore, valore, emoji, suono));
-                testiFluttuanti.push(new TestoFluttuante(`${valore}$`, palloncino.x, palloncino.y, colore));
-            } else {
-                valore = baseValue;
-                isGood = true;
+                else {
+                    const val = c.valore * multiplier;
+                    oggettiCadenti.push(new OggettoCadente(palloncino.x, palloncino.y,
+                        c.colore, val, c.emoji, c.suono));
+                    testiFluttuanti.push(new TestoFluttuante(
+                        `${val > 0 ? '+' : ''}${val}$`,
+                        palloncino.x, palloncino.y, c.colore));
+                    comboCount = val > 0 ? comboCount + 1 : 0;
+                }
             }
-
-            if (valore !== 0 && !config[palloncino.moneta]) {
-                btcPrice += valore * multiplier;
-                testiFluttuanti.push(new TestoFluttuante(`+${Math.round(valore * multiplier)}$`, palloncino.x, palloncino.y, colore));
+            else {
+                testiFluttuanti.push(new TestoFluttuante("+10000$", palloncino.x, palloncino.y, "#FFD700"));
+                comboCount++;
             }
-
-            if (isGood) {
-                comboCount = Math.min(CONFIG.COMBO_MAX, comboCount + 1);
-            } else {
-                comboCount = 0;
-            }
-
             aggiornaStat();
         }
 
@@ -1186,7 +1162,7 @@
                 }
                 ctx.globalAlpha = 1.0;
             } else {
-                // Fallback
+                // Fallback: disegna un triangolo
                 ctx.fillStyle = "#FFD700";
                 ctx.beginPath();
                 ctx.moveTo(playerX, canvas.height - 50);
@@ -1226,12 +1202,6 @@
             }
         }
 
-        function aggiornaPlayer(deltaTime) {
-            const speed = 5 + level * 0.5;
-            playerX += (targetPlayerX - playerX) * speed * deltaTime;
-            playerX = Math.max(40, Math.min(CONFIG.CANVAS_WIDTH - 40, playerX));
-        }
-
         function cicloGioco(timestamp) {
             const deltaTime = Math.min(1/30, (timestamp - lastFrameTime) / 1000);
             lastFrameTime = timestamp;
@@ -1245,39 +1215,7 @@
             requestAnimationFrame(cicloGioco);
         }
 
-        // ========================================
         // INPUT CONTROLS
-        // ========================================
-        function initMobileControls() {
-            const leftBtn = document.getElementById('leftBtn');
-            const rightBtn = document.getElementById('rightBtn');
-            const fireBtn = document.getElementById('fireBtn');
-
-            let autoFireInterval;
-
-            const moveLeft = () => targetPlayerX -= 50;
-            const moveRight = () => targetPlayerX += 50;
-
-            leftBtn.addEventListener('touchstart', (e) => { e.preventDefault(); moveLeft(); });
-            rightBtn.addEventListener('touchstart', (e) => { e.preventDefault(); moveRight(); });
-
-            fireBtn.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                spara();
-                autoFireInterval = setInterval(spara, 200);
-            });
-            fireBtn.addEventListener('touchend', () => clearInterval(autoFireInterval));
-
-            // Desktop
-            leftBtn.addEventListener('mousedown', moveLeft);
-            rightBtn.addEventListener('mousedown', moveRight);
-            fireBtn.addEventListener('mousedown', () => {
-                spara();
-                autoFireInterval = setInterval(spara, 200);
-            });
-            document.addEventListener('mouseup', () => clearInterval(autoFireInterval));
-        }
-
         document.addEventListener('keydown', (e) => {
             if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") targetPlayerX -= 30;
             if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") targetPlayerX += 30;
@@ -1326,13 +1264,7 @@
             }
         }
 
-        // ========================================
         // GAME MANAGEMENT
-        // ========================================
-        function hideTutorial() {
-            document.getElementById('tutorialOverlay').classList.add('hidden');
-        }
-
         async function avviaGioco() {
             if (gameStarted) return;
             gameStarted = true;
@@ -1353,15 +1285,17 @@
             canvas.height = CONFIG.CANVAS_HEIGHT;
             resizeCanvas();
 
-            auth.signInAnonymously().catch(console.error);
+            // Anonymous auth with try-catch to handle error
+            try {
+                await auth.signInAnonymously();
+            } catch (e) {
+                console.warn("Anonymous auth failed, proceeding without auth:", e);
+            }
 
             riproduciSuono(bgMusic);
 
             loadLeaderboard();
             cicloGioco(performance.now());
-
-            setTimeout(hideTutorial, 10000);
-            if (window.innerWidth < 768) initMobileControls();
         }
 
         function terminaGioco(punteggio) {
@@ -1387,14 +1321,11 @@
             oggettiCadenti = [];
             testiFluttuanti = [];
             playerX = CONFIG.CANVAS_WIDTH / 2;
-            targetPlayerX = playerX;
             timeLeft = CONFIG.TEMPO_GIOCO;
             btcPrice = 100000;
             fadeAlpha = 0;
             level = 1;
             spawnRate = CONFIG.BASE_SPAWN_RATE;
-            comboCount = 0;
-            safeZoneActive = true;
 
             Object.values(audioMap).forEach(audio => {
                 if (audio) {
@@ -1493,11 +1424,9 @@
                     }
                 });
             }
-
-            document.getElementById('tutorialOverlay').addEventListener('click', hideTutorial);
         });
 
-        console.log("✅ Game script loaded with Firebase compat SDK");
+        console.log("✅ Game script loaded with enhancements");
     </script>
 
 </body>

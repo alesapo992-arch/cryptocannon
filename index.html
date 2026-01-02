@@ -175,6 +175,7 @@
             z-index: 20;
             opacity: 1;
             transition: opacity 1s ease;
+            pointer-events: auto; /* Ensure clickable */
         }
 
         #tutorialOverlay.hidden {
@@ -587,8 +588,8 @@
             CANVAS_WIDTH: 800,
             CANVAS_HEIGHT: 600,
             TEMPO_GIOCO: 180,
-            MAX_PALLONCINI: 8,
-            BASE_SPAWN_RATE: 0.02,
+            MAX_PALLONCINI: 12,
+            BASE_SPAWN_RATE: 0.025,
             DOUBLE_FIRE_DURATA: 6000,
             FPS: 60,
             LEVEL_THRESHOLD: 25,
@@ -1204,6 +1205,12 @@
                 ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
             }
+        }
+
+        function aggiornaPlayer(deltaTime) {
+            const speed = 5 + level * 0.5;
+            playerX += (targetPlayerX - playerX) * speed * deltaTime;
+            playerX = Math.max(40, Math.min(CONFIG.CANVAS_WIDTH - 40, playerX));
         }
 
         function cicloGioco(timestamp) {

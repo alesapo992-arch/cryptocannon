@@ -1,3 +1,5 @@
+html
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -586,10 +588,10 @@
             CANVAS_WIDTH: 800,
             CANVAS_HEIGHT: 600,
             TEMPO_GIOCO: 180,
-            MAX_PALLONCINI: 12,
-            BASE_SPAWN_RATE: 0.025,
+            MAX_PALLONCINI: 8, // Reduced for mobile performance
+            BASE_SPAWN_RATE: 0.02, // Lowered
             DOUBLE_FIRE_DURATA: 6000,
-            FPS: 60,
+            FPS: /Mobi|Android/i.test(navigator.userAgent) ? 30 : 60, // Lower FPS on mobile
             LEVEL_THRESHOLD: 25,
             SAFE_ZONE_TIME: 30,
             COMBO_MAX: 20,
@@ -1286,7 +1288,7 @@
 
             document.getElementById('quickstart').style.display = 'none';
             document.getElementById('gameArea').style.display = 'block';
-            document.getElementById('leaderboard').style.display = 'block';
+            // Do not show leaderboard here
 
             canvas = document.getElementById('gameCanvas');
             ctx = canvas.getContext('2d');
@@ -1303,6 +1305,7 @@
 
             riproduciSuono(bgMusic);
 
+            // Load leaderboard but don't show yet
             loadLeaderboard();
             cicloGioco(performance.now());
         }
@@ -1318,6 +1321,9 @@
                 document.getElementById('nameOverlay').style.display = 'flex';
                 document.getElementById('nickInput').focus();
                 window.shareScore = () => shareScore(punteggio);
+
+                // Show leaderboard at game over
+                document.getElementById('leaderboard').style.display = 'block';
             }, 1000);
         }
 
@@ -1441,3 +1447,4 @@
 
 </body>
 </html>
+

@@ -539,12 +539,11 @@
             <div id="comboFill"></div>
         </div>
 
-        <!-- TUTORIAL OVERLAY -->
+        <!-- TUTORIAL OVERLAY 
         <div id="tutorialOverlay">
             <h2>Benvenuto!</h2>
             <p>Muovi il cannone ← → <br> Sparare con SPAZIO o CLICK <br> Colpisci monete buone 💰, evita shitcoin 💩 <br> Combo per bonus!</p>
-        </div>
-
+        </div>  -->
         <!-- MOBILE CONTROLS -->
         <div id="mobileControls">
             <div class="controlBtn" id="leftBtn">←</div>
@@ -1287,7 +1286,7 @@
 
             document.getElementById('quickstart').style.display = 'none';
             document.getElementById('gameArea').style.display = 'block';
-            document.getElementById('leaderboard').style.display = 'block';
+            // Do not show leaderboard here
 
             canvas = document.getElementById('gameCanvas');
             ctx = canvas.getContext('2d');
@@ -1304,6 +1303,7 @@
 
             riproduciSuono(bgMusic);
 
+            // Load leaderboard but don't show yet
             loadLeaderboard();
             cicloGioco(performance.now());
         }
@@ -1319,6 +1319,9 @@
                 document.getElementById('nameOverlay').style.display = 'flex';
                 document.getElementById('nickInput').focus();
                 window.shareScore = () => shareScore(punteggio);
+
+                // Show leaderboard at game over
+                document.getElementById('leaderboard').style.display = 'block';
             }, 1000);
         }
 
